@@ -1,14 +1,19 @@
+(// "Read a number from input.")
 (push 0)
 (dup)
 (getnum)
 (retrieve)
+
+(// "Go into case 0 if the number is 0, case 1 otherwise.")
 (jz (bin "0"))
 
+(// "Case 1: Output 1 in a forever loop.")
 (setlabel (bin "1"))
 (push 1)
 (putnum)
 (jmp (bin "1"))
 
+(// "Case 0: Output 0, then terminates.")
 (setlabel (bin "0"))
 (push 0)
 (putnum)
