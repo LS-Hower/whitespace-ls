@@ -174,12 +174,15 @@
      (error "Unrecognized argument type")]))
 
 (define (statement->ternary statement)
-  (let* ([command (first statement)]
-         [arg (rest statement)]
-         [imp-ternary (category->ternary (command->category command))]
-         [command-ternary (command->ternary command)]
-         [arg-type (command-arg-type command)])
-    (append imp-ternary command-ternary (optional-arg->ternary arg-type arg))))
+  (let ([command (first statement)]
+        [arg (rest statement)])
+    ; handle comment
+    (if (memq command '(comment //))
+        '()
+        (let ([imp-ternary (category->ternary (command->category command))]
+              [command-ternary (command->ternary command)]
+              [arg-type (command-arg-type command)])
+          (append imp-ternary command-ternary (optional-arg->ternary arg-type arg))))))
 
 (define (statements->ternary statements)
   (append* (map statement->ternary statements)))
