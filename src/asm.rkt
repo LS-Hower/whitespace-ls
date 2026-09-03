@@ -180,3 +180,88 @@
          [command-ternary (command->ternary command)]
          [arg-type (command-arg-type command)])
     (append imp-ternary command-ternary (optional-arg->ternary arg-type arg))))
+
+(define (statements->ternary statements)
+  (append* (map statement->ternary statements)))
+
+(define (ternary->whitespace ternary)
+  (define (single-mapping sym)
+    (match sym
+      ['SP #\space]
+      ['TAB #\tab]
+      ['LF #\newline]
+      [_ (error "Unrecognized ternary element")]))
+  (apply string (map single-mapping ternary)))
+
+(define statements->whitespace (compose ternary->whitespace statements->ternary))
+
+(module+ main
+  (define (usage [code 1])
+    (displayln "Usage: racket src/asm.rkt [INPUT] [-o OUTPUT]")
+    (displayln "  Assemble Whitespace statements into a Whitespace program.")
+    (displayln "  INPUT (default: stdin; \"-\" also means stdin) holds s-expressions,")
+    (displayln "  either one list of statements like  ((push #\\H) (putchar))")
+    (displayln "  or several top-level statements, e.g. (push #\\H) (putchar)")
+    (displayln "  OUTPUT (default: stdout) receives the raw Whitespace text.")
+    (exit code))
+
+  (define (parse-args args)
+    (let loop ([rest args] [input #f] [output #f])
+      (cond
+        [(null? rest) (values input output)]
+        [(member (car rest) '("-h" "--help")) (raise 'help)]
+        [(equal? (car rest) "-o")
+         (unless (and (pair? (cdr rest))
+                      (not (member (cadr rest) '("-o" "-h" "--help"))))
+           (raise 'usage))
+         (when output (raise 'usage))
+         (loop (cddr rest) input (cadr rest))]
+        [input (raise 'usage)]
+        [else (loop (cdr rest) (car rest) output)])))
+
+  (define (read-program port)
+    (define (read-all)
+      (let loop ()
+        (define x (read port))
+        (if (eof-object? x) '() (cons x (loop)))))
+    (define datums (read-all))
+    (cond
+      [(null? datums) '()]
+      [(and (null? (cdr datums)) (null? (car datums))) '()]
+      ;; single datum that is itself a list of statements, e.g. ((push #\H) (putchar))
+      [(and (null? (cdr datums))
+            (pair? (car datums))
+            (pair? (caar datums)))
+       (car datums)]
+      ;; otherwise each top-level datum is one statement
+      [else datums]))
+
+  (define (run)
+    (define-values (input output)
+      (parse-args (vector->list (current-command-line-arguments))))
+    (define in-port (if (and input (not (equal? input "-")))
+                        (open-input-file input)
+                        (current-input-port)))
+    (define statements
+      (dynamic-wind
+        void
+        (lambda () (read-program in-port))
+        (lambda () (unless (eq? in-port (current-input-port))
+                     (close-input-port in-port)))))
+    (define ws (statements->whitespace statements))
+    (define out-port (if output
+                         (open-output-file output #:exists 'truncate/replace)
+                         (current-output-port)))
+    (dynamic-wind
+      void
+      (lambda () (write-bytes (string->bytes/utf-8 ws) out-port))
+      (lambda () (unless (eq? out-port (current-output-port))
+                   (close-output-port out-port))))
+    (void))
+
+  (with-handlers ([(lambda (e) (eq? e 'help)) (lambda (e) (usage 0))]
+                  [(lambda (e) (eq? e 'usage)) (lambda (e) (usage))]
+                  [exn:fail? (lambda (e)
+                               (eprintf "asm: ~a~n" (exn-message e))
+                               (exit 1))])
+    (run)))
